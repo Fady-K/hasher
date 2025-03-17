@@ -18,10 +18,10 @@ namespace Hasher.CLI
 			// Define the root command
 			var rootCommand = new RootCommand("Hasher CLI: A command-line tool for hashing files and passwords.");
 
-			// Global --version option
+			// Global --version option with a clearer description
 			var versionOption = new Option<bool>(
 				new[] { "--version", "-v" },
-				$"{Assembly.GetExecutingAssembly().GetName().Version}"
+				"Display the version of the application"
 			);
 			rootCommand.AddOption(versionOption);
 
@@ -40,9 +40,16 @@ namespace Hasher.CLI
 				"The file to save the hash(es) to"
 			);
 			hashFileCommand.AddOption(outputOption);
+			// New --hash-only option
+			var hashOnlyOption = new Option<bool>(
+				new[] { "--hash-only" },
+				"Print only the hash without the file path"
+			);
+			hashFileCommand.AddOption(hashOnlyOption);
+			// Update the handler to include the new option
 			hashFileCommand.SetHandler(
-				(files, algorithm, output) => HandleHashFile(files, algorithm, output),
-				filePathsArgument, fileAlgorithmOption, outputOption
+				(files, algorithm, output, hashOnly) => HandleHashFile(files, algorithm, output, hashOnly),
+				filePathsArgument, fileAlgorithmOption, outputOption, hashOnlyOption
 			);
 
 			// Subcommand: hash-password
@@ -84,8 +91,8 @@ namespace Hasher.CLI
 			await parser.InvokeAsync(args);
 		}
 
-		// Handler for hash-file
-		private static void HandleHashFile(string[] files, HashingAlgorithm algorithm, string output)
+		// Handler for hash-file, updated to handle the --hash-only option
+		private static void HandleHashFile(string[] files, HashingAlgorithm algorithm, string output, bool hashOnly)
 		{
 			var hasher = new FileHasher(algorithm);
 			var results = new List<(string file, string hash)>();
@@ -96,6 +103,7 @@ namespace Hasher.CLI
 				try
 				{
 					var hashResult = hasher.Hash(file);
+					// Remove hyphens from the hash for consistency
 					string hashHex = BitConverter.ToString(hashResult.Hash);
 					results.Add((file, hashHex));
 				}
@@ -105,14 +113,21 @@ namespace Hasher.CLI
 				}
 			}
 
-			// Output results
+			// Output results based on the --hash-only flag
 			if (output != null)
 			{
 				using (var writer = new StreamWriter(output))
 				{
 					foreach (var (file, hash) in results)
 					{
-						writer.WriteLine($"{file}: {hash}");
+						if (hashOnly)
+						{
+							writer.WriteLine(hash);
+						}
+						else
+						{
+							writer.WriteLine($"{file}: {hash}");
+						}
 					}
 				}
 			}
@@ -120,7 +135,14 @@ namespace Hasher.CLI
 			{
 				foreach (var (file, hash) in results)
 				{
-					Console.WriteLine($"{file}: {hash}");
+					if (hashOnly)
+					{
+						Console.WriteLine(hash);
+					}
+					else
+					{
+						Console.WriteLine($"{file}: {hash}");
+					}
 				}
 			}
 
@@ -131,7 +153,7 @@ namespace Hasher.CLI
 			}
 		}
 
-		// Handler for hash-password
+		// Handler for hash-password (unchanged)
 		private static void HandleHashPassword(HashingAlgorithm algorithm)
 		{
 			Console.Write("Enter password: ");
@@ -141,7 +163,7 @@ namespace Hasher.CLI
 			Console.WriteLine(hash);
 		}
 
-		// Securely read password without echoing
+		// Securely read password without echoing (unchanged)
 		private static string ReadPassword()
 		{
 			string password = "";
@@ -152,16 +174,14 @@ namespace Hasher.CLI
 
 				if (key.Key == ConsoleKey.Backspace)
 				{
-					// Handle backspace: remove last character and erase asterisk
 					if (password.Length > 0)
 					{
 						password = password.Remove(password.Length - 1);
-						Console.Write("\b \b"); // Erase the last asterisk
+						Console.Write("\b \b");
 					}
 				}
 				else if (key.Key != ConsoleKey.Enter)
 				{
-					// Append the character and display an asterisk
 					password += key.KeyChar;
 					Console.Write("*");
 				}
