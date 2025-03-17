@@ -1,0 +1,28 @@
+﻿using System;
+
+namespace Hasher.Core.HashingService
+{
+	public class HashResult
+	{
+		/////////////////////////////////////////////////////////// Properties //////////////////////////////////////////////////////////////////////////
+		public byte[] Hash { get; }
+		public HashingAlgorithm UsedAlgorithm { get; }
+
+
+        /////////////////////////////////////////////////////////// Constructors //////////////////////////////////////////////////////////////////////////
+        public HashResult(byte[] hash, HashingAlgorithm hashingAlgorithm)
+        {
+            // Init local properties.
+            Hash = hash;
+            UsedAlgorithm = hashingAlgorithm;
+        }
+
+
+		/////////////////////////////////////////////////////////// Instance Attributes //////////////////////////////////////////////////////////////////////////
+		public override string ToString()
+		{
+			// Convert hash into a hexadecimal string and return it.
+			return BitConverter.ToString(Hash);
+		}
+	}
+}
