@@ -44,16 +44,18 @@ The CLI is built using the following namespaces:
 
 ### Subcommand: `hash-file`
 - **Description**: "Hash one or more files using the specified algorithm."
-- **Syntax**: `hasher hash-file <files...> [--algorithm <algorithm>] [--output <file>]`
+- **Syntax**: `hasher hash-file <files...> [--algorithm <algorithm>] [--output <file>] [--hash-only]`
 - **Arguments**:
   - `files` (`string[]`, required): One or more file paths to hash.
 - **Options**:
   - `--algorithm` / `-a` (`HashingAlgorithm`, default: `SHA256`): The hashing algorithm to use (e.g., `MD5`, `SHA1`, `SHA256`, `SHA512`, `Argon2`).
   - `--output` / `-o` (`string`, optional): The file path to save the hashes. If omitted, hashes are printed to the console.
+  - `--hash-only` (`bool`, optional): Print only the hash without the file path. If omitted, the output includes both the file path and hash.
 - **Behavior**:
   - Hashes each file using the specified algorithm.
-  - Outputs in the format `<file>: <hash>` (hex string without hyphens).
-  - If `--output` is specified, saves all hashes to the file; otherwise, prints to the console.
+  - By default, outputs in the format `<file>: <hash>` (hex string with hyphens).
+  - If `--hash-only` is specified, outputs only the hash without the file path.
+  - If `--output` is specified, saves the output to the file; otherwise, prints to the console.
   - Handles errors (e.g., file not found) gracefully, reporting them to `Console.Error`.
 
 ### Subcommand: `hash-password`
@@ -72,8 +74,8 @@ The CLI is built using the following namespaces:
 - Passwords are read securely using a custom `ReadPassword` method that masks input with asterisks (`*`) and reads characters until Enter is pressed.
 
 ### Output Formatting
-- Hashes are converted from byte arrays to hexadecimal strings using `BitConverter.ToString().Replace("-", "")`.
-- For `hash-file`, the output includes the file name for clarity when handling multiple files.
+- Hashes are converted from byte arrays to hexadecimal strings using `BitConverter.ToString()`.
+- For `hash-file`, the output includes the file name by default for clarity when handling multiple files, but can be set to print only the hash with the `--hash-only` option.
 
 ### Error Handling
 - For `hash-file`, exceptions (e.g., `FileNotFoundException`) are caught per file, allowing the command to continue processing remaining files while reporting errors.
@@ -84,7 +86,7 @@ The CLI is built using the following namespaces:
 
 ## Code Implementation
 
-The following C# code implements the CLI design:
+The following C# code implements the CLI design, including the `--hash-only` option:
 
 ```csharp
 using System;
@@ -107,10 +109,10 @@ namespace Hasher.CLI
 			// Define the root command
 			var rootCommand = new RootCommand("Hasher CLI: A command-line tool for hashing files and passwords.");
 
-			// Global --version option
+			// Global --version option with a clearer description
 			var versionOption = new Option<bool>(
 				new[] { "--version", "-v" },
-				$"{Assembly.GetExecutingAssembly().GetName().Version}"
+				"Display the version of the application"
 			);
 			rootCommand.AddOption(versionOption);
 
@@ -129,9 +131,16 @@ namespace Hasher.CLI
 				"The file to save the hash(es) to"
 			);
 			hashFileCommand.AddOption(outputOption);
+			// New --hash-only option
+			var hashOnlyOption = new Option<bool>(
+				new[] { "--hash-only" },
+				"Print only the hash without the file path"
+			);
+			hashFileCommand.AddOption(hashOnlyOption);
+			// Update the handler to include the new option
 			hashFileCommand.SetHandler(
-				(files, algorithm, output) => HandleHashFile(files, algorithm, output),
-				filePathsArgument, fileAlgorithmOption, outputOption
+				(files, algorithm, output, hashOnly) => HandleHashFile(files, algorithm, output, hashOnly),
+				filePathsArgument, fileAlgorithmOption, outputOption, hashOnlyOption
 			);
 
 			// Subcommand: hash-password
@@ -173,8 +182,8 @@ namespace Hasher.CLI
 			await parser.InvokeAsync(args);
 		}
 
-		// Handler for hash-file
-		private static void HandleHashFile(string[] files, HashingAlgorithm algorithm, string output)
+		// Handler for hash-file, updated to handle the --hash-only option
+		private static void HandleHashFile(string[] files, HashingAlgorithm algorithm, string output, bool hashOnly)
 		{
 			var hasher = new FileHasher(algorithm);
 			var results = new List<(string file, string hash)>();
@@ -185,6 +194,7 @@ namespace Hasher.CLI
 				try
 				{
 					var hashResult = hasher.Hash(file);
+					// Remove hyphens from the hash for consistency
 					string hashHex = BitConverter.ToString(hashResult.Hash);
 					results.Add((file, hashHex));
 				}
@@ -194,14 +204,21 @@ namespace Hasher.CLI
 				}
 			}
 
-			// Output results
+			// Output results based on the --hash-only flag
 			if (output != null)
 			{
 				using (var writer = new StreamWriter(output))
 				{
 					foreach (var (file, hash) in results)
 					{
-						writer.WriteLine($"{file}: {hash}");
+						if (hashOnly)
+						{
+							writer.WriteLine(hash);
+						}
+						else
+						{
+							writer.WriteLine($"{file}: {hash}");
+						}
 					}
 				}
 			}
@@ -209,7 +226,14 @@ namespace Hasher.CLI
 			{
 				foreach (var (file, hash) in results)
 				{
-					Console.WriteLine($"{file}: {hash}");
+					if (hashOnly)
+					{
+						Console.WriteLine(hash);
+					}
+					else
+					{
+						Console.WriteLine($"{file}: {hash}");
+					}
 				}
 			}
 
@@ -220,7 +244,7 @@ namespace Hasher.CLI
 			}
 		}
 
-		// Handler for hash-password
+		// Handler for hash-password (unchanged)
 		private static void HandleHashPassword(HashingAlgorithm algorithm)
 		{
 			Console.Write("Enter password: ");
@@ -230,7 +254,7 @@ namespace Hasher.CLI
 			Console.WriteLine(hash);
 		}
 
-		// Securely read password without echoing
+		// Securely read password without echoing (unchanged)
 		private static string ReadPassword()
 		{
 			string password = "";
@@ -241,16 +265,14 @@ namespace Hasher.CLI
 
 				if (key.Key == ConsoleKey.Backspace)
 				{
-					// Handle backspace: remove last character and erase asterisk
 					if (password.Length > 0)
 					{
 						password = password.Remove(password.Length - 1);
-						Console.Write("\b \b"); // Erase the last asterisk
+						Console.Write("\b \b");
 					}
 				}
 				else if (key.Key != ConsoleKey.Enter)
 				{
-					// Append the character and display an asterisk
 					password += key.KeyChar;
 					Console.Write("*");
 				}
@@ -265,13 +287,19 @@ namespace Hasher.CLI
 
 ## Usage Examples
 
-1. **Hash a Single File**:
+1. **Hash a Single File (Default Output)**:
    ```
    hasher hash-file document.txt
    ```
    Output: `document.txt: <SHA256_hash>`
 
-2. **Hash Multiple Files with Output File**:
+2. **Hash a Single File with `--hash-only`**:
+   ```
+   hasher hash-file --hash-only document.txt
+   ```
+   Output: `<SHA256_hash>`
+
+3. **Hash Multiple Files with Output File**:
    ```
    hasher hash-file file1.txt file2.txt --algorithm SHA512 --output hashes.txt
    ```
@@ -281,14 +309,24 @@ namespace Hasher.CLI
    file2.txt: <SHA512_hash>
    ```
 
-3. **Hash a Password**:
+4. **Hash Multiple Files with `--hash-only` and Output File**:
+   ```
+   hasher hash-file --hash-only file1.txt file2.txt --output hashes.txt
+   ```
+   Creates `hashes.txt` with:
+   ```
+   <hash1>
+   <hash2>
+   ```
+
+5. **Hash a Password**:
    ```
    hasher hash-password
    ```
    Prompts: `Enter password: ****` (user types "mypassword")
    Output: `<Argon2_hash>`
 
-4. **Check Version**:
+6. **Check Version**:
    ```
    hasher --version
    ```
@@ -296,4 +334,4 @@ namespace Hasher.CLI
 
 ---
 
-This markdown file provides a comprehensive guide to the Hasher CLI, including its design, implementation, and usage examples.
+This markdown file provides a comprehensive guide to the Hasher CLI, including its design, implementation, and usage examples with the `--hash-only` option.
